@@ -1,10 +1,14 @@
 package a.hagward.whattodo;
 
 import android.app.ActionBar;
+import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.FragmentTransaction;
+import android.content.Context;
 import android.content.DialogInterface;
+import android.graphics.Paint;
 import android.os.Bundle;
+import android.os.Handler;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentActivity;
 import android.support.v4.app.FragmentManager;
@@ -18,49 +22,34 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ListView;
+import android.widget.TextView;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
+/**
+ * WhatTodo?!: a (very) simple todo list application.
+ * @author Anders Hagward
+ */
 public class MainActivity extends FragmentActivity implements ActionBar.TabListener {
     static int STATUS_DUE = 0, STATUS_COMPLETED = 1;
 
-    /**
-     * The {@link android.support.v4.view.PagerAdapter} that will provide
-     * fragments for each of the sections. We use a
-     * {@link android.support.v4.app.FragmentPagerAdapter} derivative, which
-     * will keep every loaded fragment in memory. If this becomes too memory
-     * intensive, it may be best to switch to a
-     * {@link android.support.v4.app.FragmentStatePagerAdapter}.
-     */
     SectionsPagerAdapter mSectionsPagerAdapter;
-
-    ArrayAdapter<String>[] mArrayAdapters;
+    SwipelessViewPager mViewPager;
     DatabaseHandler dbHandler;
+    TodoListAdapter mListAdapters[];
 
-    ArrayList<Todo> dueList, completedList;
-
-    /**
-     * The {@link ViewPager} that will host the section contents.
-     */
-    ViewPager mViewPager;
-
+    // Holds the next unused id for creating new tasks.
     private long nextId;
 
-    private void initAdapters() {
-        mArrayAdapters = new ArrayAdapter[2];
-        for (int i = 0; i < 2; i++)
-            mArrayAdapters[i] = new ArrayAdapter<String>(this,
-                    android.R.layout.simple_list_item_1);
-
-        for (Todo t : dueList)
-            mArrayAdapters[STATUS_DUE].add(t.toString());
-        for (Todo t : completedList)
-            mArrayAdapters[STATUS_COMPLETED].add(t.toString());
-    }
-
+    /**
+     * Shows a dialog for creating a new task. It consists of an {@link EditText} and a positive and
+     * a negative button.
+     */
     private void showCreateTodoDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Create new todo");
@@ -69,29 +58,76 @@ public class MainActivity extends FragmentActivity implements ActionBar.TabListe
                 .setPositiveButton(R.string.create, new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialogInterface, int i) {
+                        // Add a new item with the specified title.
                         String title = input.getText().toString();
                         Todo newTodo = new Todo(nextId++, System.currentTimeMillis()/1000L,
                                 0, title);
                         dbHandler.addTodo(newTodo);
-                        dueList.add(newTodo);
-                        mArrayAdapters[STATUS_DUE].add(title);
+                        mListAdapters[STATUS_DUE].add(newTodo);
                     }
                 })
                 .setNegativeButton(R.string.cancel, null);
         builder.create().show();
     }
 
+    /**
+     * Inverts the 'completed' status, i.e. sets completed tasks as 'due' again and vice versa, of
+     * an item in the current tab, and updates the list adapters and database accordingly.
+     * @param position the position of the item in the list adapter
+     */
+    private void updateCompleted(int position) {
+        try {
+            // Move the item from 'due' to 'completed', or vice versa, and update the database
+            // respectively.
+            int statusView = mViewPager.getCurrentItem();
+            int invStatus = (statusView + 1) % 2;
+
+            Todo todo = mListAdapters[statusView].getItem(position);
+            mListAdapters[statusView].remove(todo);
+            todo.setCompleted(invStatus);
+            dbHandler.updateTodo(todo);
+            mListAdapters[invStatus].add(todo);
+        } catch (Exception e) {
+            Log.e("onListItemClick", "List index out of bounds: " + String.valueOf(position));
+        }
+    }
+
+    /**
+     * Deletes all completed tasks from the list adapter and the database.
+     */
+    private void clearCompleted() {
+        for (int i = mListAdapters[STATUS_COMPLETED].getCount() - 1; i >= 0; i--) {
+            Todo todo = mListAdapters[STATUS_COMPLETED].getItem(i);
+            mListAdapters[STATUS_COMPLETED].remove(todo);
+            dbHandler.deleteTodo(todo);
+        }
+    }
+
+    /**
+     * Sets the style of the {@link TextView} in v to be either R.style.TextDue or
+     * R.style.TextCompleted, and makes the text 'strike through' if an item in the 'due' list was
+     * set to 'completed'.
+     * @param v a View object that is a row in the {@link ListFragment} and has a tag that is a
+     *          TodoListAdapter.TodoHolder
+     * @param completed {@code true} if the View object was marked as completed, {@code false}
+     *                  otherwise
+     */
+    private void setListItemStyleCompleted(View v, boolean completed) {
+        int statusView = mViewPager.getCurrentItem();
+        TodoListAdapter.TodoHolder holder = (TodoListAdapter.TodoHolder) v.getTag();
+        holder.checkBox.setChecked(statusView == STATUS_DUE);
+        holder.txtTitle.setTextAppearance(v.getContext(),
+                (completed && statusView == STATUS_DUE) ? R.style.TextCompleted : R.style.TextDue);
+        if (completed && statusView == STATUS_DUE)
+            holder.txtTitle.setPaintFlags(holder.txtTitle.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
+        else
+            holder.txtTitle.setPaintFlags(holder.txtTitle.getPaintFlags() & ~Paint.STRIKE_THRU_TEXT_FLAG);
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
-        dbHandler = new DatabaseHandler(this);
-        dueList = (ArrayList<Todo>) dbHandler.getAllTodos(STATUS_DUE);
-        completedList = (ArrayList<Todo>) dbHandler.getAllTodos(STATUS_COMPLETED);
-        nextId = dbHandler.getNextId();
-
-        initAdapters();
 
         // Set up the action bar.
         final ActionBar actionBar = getActionBar();
@@ -102,7 +138,8 @@ public class MainActivity extends FragmentActivity implements ActionBar.TabListe
         mSectionsPagerAdapter = new SectionsPagerAdapter(getSupportFragmentManager());
 
         // Set up the ViewPager with the sections adapter.
-        mViewPager = (ViewPager) findViewById(R.id.pager);
+        mViewPager = (SwipelessViewPager) findViewById(R.id.pager);
+        mViewPager.setSwipeable(true);  // swipeable for now
         mViewPager.setAdapter(mSectionsPagerAdapter);
 
         // When swiping between different sections, select the corresponding
@@ -126,6 +163,16 @@ public class MainActivity extends FragmentActivity implements ActionBar.TabListe
                             .setText(mSectionsPagerAdapter.getPageTitle(i))
                             .setTabListener(this));
         }
+
+        // Load todos and the next id to be used (max(id) + 1).
+        dbHandler = new DatabaseHandler(this);
+        ArrayList<Todo> due = (ArrayList<Todo>) dbHandler.getAllTodos(STATUS_DUE);
+        ArrayList<Todo> completed = (ArrayList<Todo>) dbHandler.getAllTodos(STATUS_COMPLETED);
+        nextId = dbHandler.getNextId();
+
+        mListAdapters = new TodoListAdapter[2];
+        mListAdapters[STATUS_DUE] = new TodoListAdapter(this, R.layout.row, due, STATUS_DUE);
+        mListAdapters[STATUS_COMPLETED] = new TodoListAdapter(this, R.layout.row, completed, STATUS_COMPLETED);
     }
 
     @Override
@@ -140,6 +187,12 @@ public class MainActivity extends FragmentActivity implements ActionBar.TabListe
         switch (item.getItemId()) {
             case R.id.action_newtodo:
                 showCreateTodoDialog();
+                break;
+            case R.id.action_clear:
+                // Switch the view to show the completed items before deleting.
+                if (mViewPager.getCurrentItem() == STATUS_DUE)
+                    mViewPager.setCurrentItem(STATUS_COMPLETED);
+                clearCompleted();
                 break;
         }
 
@@ -161,16 +214,55 @@ public class MainActivity extends FragmentActivity implements ActionBar.TabListe
     public void onTabReselected(ActionBar.Tab tab, FragmentTransaction fragmentTransaction) {
     }
 
+    private static class TodoListAdapter extends ArrayAdapter<Todo> {
+        private int mLayoutResourceId;
+        private int mStatusView;
+
+        public TodoListAdapter(Context context, int layoutResourceId, List<Todo> data, int statusView) {
+            super(context, layoutResourceId, data);
+            mLayoutResourceId = layoutResourceId;
+            mStatusView = statusView;
+        }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            View row = convertView;
+            TodoHolder holder = null;
+
+            if (row == null) {
+                LayoutInflater inflater = ((Activity) getContext()).getLayoutInflater();
+                row = inflater.inflate(mLayoutResourceId, parent, false);
+
+                holder = new TodoHolder();
+                holder.checkBox = (CheckBox) row.findViewById(R.id.checkBox);
+                holder.txtTitle = (TextView) row.findViewById(R.id.txtTitle);
+
+                row.setTag(holder);
+            } else {
+                holder = (TodoHolder) row.getTag();
+            }
+
+            Todo todo = getItem(position);
+            holder.checkBox.setChecked(todo.getCompleted() == STATUS_COMPLETED);
+            holder.txtTitle.setText(todo.getTitle());
+            holder.txtTitle.setTextAppearance(getContext(),
+                    mStatusView == STATUS_DUE ? R.style.TextDue : R.style.TextCompleted);
+
+            return row;
+        }
+
+        static class TodoHolder {
+            CheckBox checkBox;
+            TextView txtTitle;
+        }
+    }
+
     /**
      * A {@link ListFragment} that have different behaviours for clicking 'due' items or 'completed'
      * items.
      */
     private class TodoListFragment extends ListFragment {
-        private int mStatusView = STATUS_DUE;
-
-        public TodoListFragment(int statusView) {
-            mStatusView = statusView;
-        }
+        private int mClickDelay = 1000;
 
         @Override
         public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
@@ -178,19 +270,15 @@ public class MainActivity extends FragmentActivity implements ActionBar.TabListe
         }
 
         @Override
-        public void onListItemClick(ListView l, View v, int position, long id) {
-            if (mStatusView == STATUS_DUE) {
-                try {
-                    Todo todo = dueList.remove(position);
-                    todo.setCompleted(STATUS_COMPLETED);
-                    dbHandler.updateTodo(todo);
-                    completedList.add(todo);
-                    mArrayAdapters[STATUS_DUE].remove(todo.getTitle());
-                    mArrayAdapters[STATUS_COMPLETED].add(todo.getTitle());
-                } catch (Exception e) {
-                    Log.e("onListItemClick", "List index out of bounds");
+        public void onListItemClick(ListView l, final View v, final int position, long id) {
+            setListItemStyleCompleted(v, true);
+            new Handler().postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    updateCompleted(position);
+                    setListItemStyleCompleted(v, false);
                 }
-            }
+            }, mClickDelay);
         }
     }
 
@@ -199,7 +287,6 @@ public class MainActivity extends FragmentActivity implements ActionBar.TabListe
      * one of the sections/tabs/pages.
      */
     public class SectionsPagerAdapter extends FragmentPagerAdapter {
-
         public SectionsPagerAdapter(FragmentManager fm) {
             super(fm);
         }
@@ -210,8 +297,8 @@ public class MainActivity extends FragmentActivity implements ActionBar.TabListe
             // Return a DummySectionFragment (defined as a static inner class
             // below) with the page number as its lone argument.
             /*ListFragment fragment = new ListFragment();*/
-            ListFragment fragment = new TodoListFragment(position);
-            fragment.setListAdapter(mArrayAdapters[position]);
+            ListFragment fragment = new TodoListFragment();
+            fragment.setListAdapter(mListAdapters[position]);
             return fragment;
         }
 

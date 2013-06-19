@@ -1,12 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
+    <color name="black">#000000</color>
+    <color name="gray">#BBBBBB</color>
+    <color name="red">#BF3737</color>
+
     <dimen name="activity_horizontal_margin">16dp</dimen>
     <dimen name="activity_vertical_margin">16dp</dimen>
 
     <string name="action_settings">Settings</string>
     <string name="app_name">WhatTodo?!</string>
     <string name="cancel">Cancel</string>
+    <string name="clear_completed">Clear completed</string>
     <string name="create">Create</string>
     <string name="title">Todo title</string>
     <string name="title_section1">Due</string>
@@ -22,6 +27,16 @@
 
     <style name="AppTheme" parent="AppBaseTheme">
         <!-- All customizations that are NOT specific to a particular API-level can go here. -->
+    </style>
+
+    <style name="TextCompleted">
+        <item name="android:textColor">#BBBBBB</item>
+        <item name="android:textStyle">italic</item>
+    </style>
+
+    <style name="TextDue">
+        <item name="android:textColor">#000000</item>
+        <item name="android:textStyle">normal</item>
     </style>
 
 </resources>

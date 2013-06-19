@@ -7,6 +7,7 @@
     <string name="title_section2">Completed</string>
     <string name="title">Todo title</string>
     <string name="create">Create</string>
+    <string name="clear_completed">Clear completed</string>
     <string name="cancel">Cancel</string>
 
 </resources>

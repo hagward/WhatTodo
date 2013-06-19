@@ -1,1 +1,6 @@
-This file was created by Android Studio (I/O Preview) AI-130.709792 for binding GitHub repository
+An extremely simple and lightweight todo list app for Android.
+
+TODO:
+    - documentation
+    - custom list items with checkboxes
+    - more icons!!!
